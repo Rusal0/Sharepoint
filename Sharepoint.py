@@ -1,67 +1,67 @@
 import streamlit as st
 from office365.runtime.auth.authentication_context import AuthenticationContext
 from office365.sharepoint.client_context import ClientContext
+from office365.sharepoint.files.file import File
 
-# Function to authenticate to SharePoint
-def authenticate_to_sharepoint(site_url, username, password):
-    context_auth = AuthenticationContext(site_url)
-    if context_auth.acquire_token_for_user(username, password):
-        return ClientContext(site_url, context_auth)
-    else:
-        st.error("Authentication failed.")
-        return None
+# Streamlit UI for entering SharePoint details
+st.title("SharePoint Version History Deletion Tool")
 
-# Function to list files in a folder
-def list_files_in_folder(ctx, folder_url):
-    folder = ctx.web.get_folder_by_server_relative_url(folder_url)
-    ctx.load(folder.files)
-    ctx.execute_query()
-    return [file.properties["Name"] for file in folder.files]
+sharepoint_url = st.text_input("Enter the SharePoint URL:")
+username = st.text_input("Enter your SharePoint Username:")
+password = st.text_input("Enter your SharePoint Password:", type="password")
 
-# Function to delete version history for selected files
-def delete_file_versions(ctx, folder_url, filenames):
-    folder = ctx.web.get_folder_by_server_relative_url(folder_url)
-    for filename in filenames:
-        file = folder.get_file_by_server_relative_url(f"{folder_url}/{filename}")
-        file_versions = file.versions
-        ctx.load(file_versions)
-        ctx.execute_query()
-        
-        for version in file_versions:
-            version.delete_object()
-        ctx.execute_query()
-        st.success(f"Deleted all versions for file: {filename}")
+if st.button("Connect"):
+    if sharepoint_url and username and password:
+        try:
+            # Connect to SharePoint
+            ctx_auth = AuthenticationContext(sharepoint_url)
+            if ctx_auth.acquire_token_for_user(username, password):
+                ctx = ClientContext(sharepoint_url, ctx_auth)
+                web = ctx.web
+                ctx.load(web)
+                ctx.execute_query()
+                st.success(f"Connected to {web.properties['Title']}")
+                
+                # Load all files eligible for version history deletion
+                folder = ctx.web.get_folder_by_server_relative_url("/")
+                files = folder.files
+                ctx.load(files)
+                ctx.execute_query()
 
-# Streamlit UI
-st.title("SharePoint File Version History Deletion Tool")
+                file_options = []
+                for file in files:
+                    file_options.append(file.properties["Name"])
 
-# Input fields
-site_url = st.text_input("Enter SharePoint site URL")
-folder_url = st.text_input("Enter the folder URL relative to the site (e.g., /Shared Documents)")
-username = st.text_input("Enter your SharePoint username")
-password = st.text_input("Enter your SharePoint password", type="password")
+                if file_options:
+                    selected_files = st.multiselect(
+                        "Select files to delete version history:",
+                        file_options
+                    )
 
-# Authenticate and list files
-if st.button("Authenticate and List Files"):
-    if site_url and folder_url and username and password:
-        ctx = authenticate_to_sharepoint(site_url, username, password)
-        if ctx:
-            files = list_files_in_folder(ctx, folder_url)
-            if files:
-                st.session_state["files"] = files
-                st.success("Files retrieved successfully. Select the files below.")
+                    if st.button("Delete Version History"):
+                        if selected_files:
+                            for file_name in selected_files:
+                                file = folder.files.get_by_url(file_name)
+                                ctx.load(file)
+                                ctx.execute_query()
+                                
+                                # Deleting the version history
+                                versions = file.versions
+                                ctx.load(versions)
+                                ctx.execute_query()
+                                
+                                for version in versions:
+                                    version.delete_object()
+                                    ctx.execute_query()
+                                
+                            st.success("Version history for selected files has been deleted successfully.")
+                        else:
+                            st.warning("Please select at least one file to delete the version history.")
+                else:
+                    st.warning("No files found in the specified SharePoint folder.")
             else:
-                st.warning("No files found in the specified folder.")
+                st.error("Authentication failed. Please check your credentials.")
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
     else:
-        st.error("Please fill in all the fields.")
-
-# Display files and allow user to select
-if "files" in st.session_state:
-    selected_files = st.multiselect("Select files to delete version history", st.session_state["files"])
-
-    # Delete version history for selected files
-    if st.button("Delete Version History"):
-        if selected_files:
-            delete_file_versions(ctx, folder_url, selected_files)
-        else:
-            st.error("Please select at least one file.")
+        st.warning("Please enter all required details.")
