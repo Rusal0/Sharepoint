@@ -1,7 +1,6 @@
 import streamlit as st
 from office365.runtime.auth.authentication_context import AuthenticationContext
 from office365.sharepoint.client_context import ClientContext
-from office365.sharepoint.files.file import File
 
 # Streamlit UI for entering SharePoint details
 st.title("SharePoint Version History Deletion Tool")
